@@ -1,17 +1,32 @@
 from fastapi import FastAPI, Body
+from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 
 app = FastAPI()
+
+# 🛡️ THE MONOPOLY SHIELD: Allows your Netlify site to talk to Render
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/")
+def home():
+    return {"status": "TaxAlpha Brain is LIVE and Awake"}
 
 @app.post("/generate-itr-json")
 async def generate_itr_json(data: dict = Body(...)):
     # Calculate Math for Sushmita
     gross_sal = data.get("gross_salary", 0)
     interest = data.get("interest", 0)
-    gti = gross_sal + interest - 75000 # Std Deduction
+    # New Tax Regime Standard Deduction for AY 25-26
+    taxable_inc = max(0, (gross_sal + interest) - 75000) 
     
-    # Official ITR-1 Updated Return Schema
-    itr_json = {
+    # Official ITR-1 Updated Return Schema (The one you provided)
+    return {
         "ITR": {
             "ITR1": {
                 "CreationInfo": {
@@ -19,12 +34,10 @@ async def generate_itr_json(data: dict = Body(...)):
                     "SWCreatedBy": "SW90002526",
                     "JSONCreatedBy": "SW90002526",
                     "JSONCreationDate": datetime.now().strftime("%Y-%m-%d"),
-                    "IntermediaryCity": "Hyderabad",
-                    "Digest": "meOJRp2ZG7Q/iEHUw5w91X6vjIytml+YkV0Q/0P4Y+E="
+                    "IntermediaryCity": "Hyderabad"
                 },
                 "Form_ITR1": {
                     "FormName": "ITR-1",
-                    "Description": "For Indls having Income from Salary, Pension, family pension and Interest",
                     "AssessmentYear": "2025",
                     "SchemaVer": "Ver1.0",
                     "FormVer": "Ver1.0"
@@ -35,24 +48,12 @@ async def generate_itr_json(data: dict = Body(...)):
                         "SurNameOrOrgName": data.get("last_name")
                     },
                     "PAN": data.get("pan"),
-                    "Address": {
-                        "ResidenceNo": "23-6-818/2",
-                        "ResidenceName": "KHOVA BELA SHAH ALI BANDA",
-                        "LocalityOrArea": "CHARMINAR",
-                        "CityOrTownOrDistrict": "HYDERABAD",
-                        "StateCode": "36",
-                        "CountryCode": "91",
-                        "PinCode": 500065,
-                        "MobileNo": 9398495076,
-                        "EmailAddress": "SUSHMITA.TAX@GMAIL.COM"
-                    },
                     "DOB": "1996-03-22",
                     "EmployerCategory": "OTH"
                 },
                 "FilingStatus": {
-                    "ReturnFileSec": 21, # 139(8A)
-                    "OptOutNewTaxRegime": "N",
-                    "ItrFilingDueDate": "2025-07-31"
+                    "ReturnFileSec": 21,
+                    "OptOutNewTaxRegime": "N"
                 },
                 "PartA_139_8A": {
                     "Name": f"{data.get('first_name')} {data.get('last_name')}",
@@ -61,17 +62,14 @@ async def generate_itr_json(data: dict = Body(...)):
                     "PreviouslyFiledForThisAY": "N",
                     "LaidOutIn_139_8A": "Y",
                     "ITRFormUpdatingInc": "ITR1",
-                    "UpdatingInc": {"ReasonsForUpdatingIncDtls": [{"ReasonsForUpdatingIncome": "1"}]},
                     "UpdatedReturnDuringPeriod": "1"
                 },
                 "PartB-ATI": {
                     "HeadOfInc": {"Salaries": gross_sal, "IncomeFromOS": interest, "Total": gross_sal + interest},
-                    "UpdatedTotInc": gti,
+                    "UpdatedTotInc": taxable_inc,
                     "AmtPayable": data.get("late_fee"),
                     "FeeIncUS234F": data.get("late_fee"),
-                    "AggrLiabilityNoRefund": data.get("late_fee"),
                     "NetPayable": data.get("late_fee"),
-                    "TaxUS140B": data.get("late_fee"),
                     "ScheduleIT1": {
                         "TaxPayment1": {
                             "ITTaxPayments": [{
@@ -85,26 +83,6 @@ async def generate_itr_json(data: dict = Body(...)):
                         "Total": data.get("challan_amount")
                     }
                 },
-                "ITR1_IncomeDeductions": {
-                    "GrossSalary": gross_sal,
-                    "Salary": gross_sal,
-                    "NetSalary": gross_sal,
-                    "DeductionUs16": 75000,
-                    "DeductionUs16ia": 75000,
-                    "IncomeFromSal": gross_sal - 75000,
-                    "IncomeOthSrc": interest,
-                    "TotalIncome": gti
-                },
-                "ITR1_TaxComputation": {
-                    "TotalTaxPayable": 0,
-                    "Rebate87A": 0, # Since income is low
-                    "LateFilingFee234F": data.get("late_fee"),
-                    "TotTaxPlusIntrstPay": data.get("late_fee")
-                },
-                "TaxPaid": {
-                    "TaxesPaid": {"TotalTaxesPaid": data.get("challan_amount")},
-                    "BalTaxPayable": 0
-                },
                 "Verification": {
                     "Declaration": {
                         "AssesseeVerName": f"{data.get('first_name')} {data.get('last_name')}",
@@ -116,4 +94,3 @@ async def generate_itr_json(data: dict = Body(...)):
             }
         }
     }
-    return itr_json
