@@ -23,15 +23,19 @@ def extract_amount(text, keywords):
     return 0
 
 def find_last_balance(text, keywords):
+    # 🔥 THE FIX: Cut off the "Summary" section at the bottom so it doesn't read Total Debits!
+    # This chops the document right before the summary table starts.
+    clean_text = re.split(r"(?i)(statement summary|total withdrawals|total debits|total deposits|total credits)", text)[0]
+    
     cr_dr_pattern = r"(\d+(?:,\d+)*(?:\.\d+)?)\s*(?:\(Cr\)|\(Dr\)|Cr|Dr)"
-    cr_dr_matches = re.findall(cr_dr_pattern, text, re.IGNORECASE)
+    cr_dr_matches = re.findall(cr_dr_pattern, clean_text, re.IGNORECASE)
     
     if cr_dr_matches:
         return float(cr_dr_matches[-1].replace(',', ''))
         
     for keyword in keywords:
         pattern = rf"{keyword}.*?(\d+(?:,\d+)*(?:\.\d+)?)"
-        matches = re.findall(pattern, text, re.IGNORECASE)
+        matches = re.findall(pattern, clean_text, re.IGNORECASE)
         if matches:
             return float(matches[-1].replace(',', ''))
     return 0
@@ -50,18 +54,15 @@ async def process_document(file: UploadFile = File(...)):
         contents = await file.read()
         pdf = pdfplumber.open(io.BytesIO(contents))
         
-        # 🔥 THE CRASH FIX: Safely read pages, skipping blank ones!
         full_text = ""
         for page in pdf.pages:
             extracted = page.extract_text()
-            if extracted: # Only add it if there is actual text
+            if extracted:
                 full_text += extracted + "\n"
         
         text_lower = full_text.lower()
         
-        # 🧠 THE UNIVERSAL ROUTER
         is_bank_statement = any(word in text_lower for word in ["ifsc", "account no", "account number", "statement of account", "details of statement"])
-        # Removed ambiguous words so it never confuses a bank statement for a payslip
         is_payslip = any(word in text_lower for word in ["payslip", "pay slip", "gross salary", "net pay"])
 
         if is_bank_statement and not is_payslip:
