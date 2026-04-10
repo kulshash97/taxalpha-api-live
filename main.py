@@ -22,6 +22,15 @@ def extract_amount(text, keywords):
             return float(match.group(1).replace(',', ''))
     return 0
 
+def find_last_balance(text, keywords):
+    # Bank tables are long. We want the LAST balance at the bottom of the page.
+    for keyword in keywords:
+        pattern = rf"{keyword}.*?(\d{{1,3}}(?:,\d{{3}})*(?:\.\d+)?)"
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        if matches:
+            return float(matches[-1].replace(',', '')) # Grabs the final row's balance
+    return 0
+
 def calculate_tax_new_regime(taxable_income):
     if taxable_income <= 400000: return 0
     elif taxable_income <= 800000: return (taxable_income - 400000) * 0.05
@@ -37,12 +46,16 @@ async def process_document(file: UploadFile = File(...)):
         pdf = pdfplumber.open(io.BytesIO(contents))
         full_text = "".join([page.extract_text() for page in pdf.pages])
         
-        # 🧠 THE BRAIN ROUTER: What kind of document is this?
         text_lower = full_text.lower()
         
-        # SCENARIO 1: It's a Bank Statement
-        if "statement of account" in text_lower or "closing balance" in text_lower or "ledger balance" in text_lower:
-            balance = extract_amount(full_text, ["Closing Balance", "Ledger Balance", "Available Balance", "Total Balance"])
+        # 🧠 THE UNIVERSAL ROUTER
+        # Look for universal Indian banking footprints instead of specific titles
+        is_bank_statement = any(word in text_lower for word in ["ifsc", "account no", "account number", "statement of account", "details of statement"])
+        is_payslip = any(word in text_lower for word in ["payslip", "pay slip", "gross salary", "net pay", "earnings"])
+
+        if is_bank_statement and not is_payslip:
+            # It's a Bank Statement. Find the absolute last balance mentioned.
+            balance = find_last_balance(full_text, ["Closing Balance", "Total Balance", "Available Balance", "Net Balance", "Ledger Balance", "Balance()", "Balance"])
             return {
                 "status": "Success",
                 "doc_type": "bank_statement",
@@ -50,9 +63,9 @@ async def process_document(file: UploadFile = File(...)):
                 "filename": file.filename
             }
             
-        # SCENARIO 2: It's a Payslip
         else:
-            gross = extract_amount(full_text, ["Gross Earnings", "Gross Salary", "Gross Total Income"])
+            # It's a Payslip / Form 16
+            gross = extract_amount(full_text, ["Gross Earnings", "Gross Salary", "Gross Total Income", "Total Earnings"])
             standard_deduction = 75000
             taxable_income = max(0, gross - standard_deduction)
             tax_due = calculate_tax_new_regime(taxable_income)
