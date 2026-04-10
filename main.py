@@ -23,12 +23,20 @@ def extract_amount(text, keywords):
     return 0
 
 def find_last_balance(text, keywords):
-    # Bank tables are long. We want the LAST balance at the bottom of the page.
+    # 🧠 THE CA HACK: Look for the last number that has (Cr) or (Dr) next to it!
+    # This completely ignores broken tables and just finds the final money amount.
+    cr_dr_pattern = r"(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*(?:\(Cr\)|\(Dr\)|Cr|Dr)"
+    cr_dr_matches = re.findall(cr_dr_pattern, text, re.IGNORECASE)
+    
+    if cr_dr_matches:
+        return float(cr_dr_matches[-1].replace(',', ''))
+        
+    # Fallback just in case
     for keyword in keywords:
         pattern = rf"{keyword}.*?(\d{{1,3}}(?:,\d{{3}})*(?:\.\d+)?)"
         matches = re.findall(pattern, text, re.IGNORECASE)
         if matches:
-            return float(matches[-1].replace(',', '')) # Grabs the final row's balance
+            return float(matches[-1].replace(',', ''))
     return 0
 
 def calculate_tax_new_regime(taxable_income):
@@ -49,12 +57,10 @@ async def process_document(file: UploadFile = File(...)):
         text_lower = full_text.lower()
         
         # 🧠 THE UNIVERSAL ROUTER
-        # Look for universal Indian banking footprints instead of specific titles
         is_bank_statement = any(word in text_lower for word in ["ifsc", "account no", "account number", "statement of account", "details of statement"])
         is_payslip = any(word in text_lower for word in ["payslip", "pay slip", "gross salary", "net pay", "earnings"])
 
         if is_bank_statement and not is_payslip:
-            # It's a Bank Statement. Find the absolute last balance mentioned.
             balance = find_last_balance(full_text, ["Closing Balance", "Total Balance", "Available Balance", "Net Balance", "Ledger Balance", "Balance()", "Balance"])
             return {
                 "status": "Success",
@@ -64,7 +70,6 @@ async def process_document(file: UploadFile = File(...)):
             }
             
         else:
-            # It's a Payslip / Form 16
             gross = extract_amount(full_text, ["Gross Earnings", "Gross Salary", "Gross Total Income", "Total Earnings"])
             standard_deduction = 75000
             taxable_income = max(0, gross - standard_deduction)
