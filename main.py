@@ -1,6 +1,6 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-import pdfplumber
+import fitz  # 🔥 This is PyMuPDF: 10x faster and uses almost zero RAM!
 import io
 import re
 
@@ -23,8 +23,7 @@ def extract_amount(text, keywords):
     return 0
 
 def find_last_balance(text, keywords):
-    # 🔥 THE FIX: Cut off the "Summary" section at the bottom so it doesn't read Total Debits!
-    # This chops the document right before the summary table starts.
+    # Cut off the "Summary" section
     clean_text = re.split(r"(?i)(statement summary|total withdrawals|total debits|total deposits|total credits)", text)[0]
     
     cr_dr_pattern = r"(\d+(?:,\d+)*(?:\.\d+)?)\s*(?:\(Cr\)|\(Dr\)|Cr|Dr)"
@@ -52,13 +51,16 @@ def calculate_tax_new_regime(taxable_income):
 async def process_document(file: UploadFile = File(...)):
     try:
         contents = await file.read()
-        pdf = pdfplumber.open(io.BytesIO(contents))
+        
+        # 🔥 THE RAM FIX: Open with PyMuPDF (fitz)
+        doc = fitz.open(stream=contents, filetype="pdf")
         
         full_text = ""
-        for page in pdf.pages:
-            extracted = page.extract_text()
+        for page in doc:
+            extracted = page.get_text()
             if extracted:
                 full_text += extracted + "\n"
+        doc.close() # Instantly frees up memory!
         
         text_lower = full_text.lower()
         
