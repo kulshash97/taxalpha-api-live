@@ -16,7 +16,6 @@ app.add_middleware(
 
 def extract_amount(text, keywords):
     for keyword in keywords:
-        # Updated to catch numbers with OR without commas (e.g. 64,082 or 64082)
         pattern = rf"{keyword}.*?(\d+(?:,\d+)*(?:\.\d+)?)"
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
@@ -24,14 +23,12 @@ def extract_amount(text, keywords):
     return 0
 
 def find_last_balance(text, keywords):
-    # 🧠 THE CA HACK: Look for the last number with (Cr)/(Dr), commas or no commas!
     cr_dr_pattern = r"(\d+(?:,\d+)*(?:\.\d+)?)\s*(?:\(Cr\)|\(Dr\)|Cr|Dr)"
     cr_dr_matches = re.findall(cr_dr_pattern, text, re.IGNORECASE)
     
     if cr_dr_matches:
         return float(cr_dr_matches[-1].replace(',', ''))
         
-    # Fallback
     for keyword in keywords:
         pattern = rf"{keyword}.*?(\d+(?:,\d+)*(?:\.\d+)?)"
         matches = re.findall(pattern, text, re.IGNORECASE)
@@ -52,13 +49,20 @@ async def process_document(file: UploadFile = File(...)):
     try:
         contents = await file.read()
         pdf = pdfplumber.open(io.BytesIO(contents))
-        full_text = "".join([page.extract_text() for page in pdf.pages])
+        
+        # 🔥 THE CRASH FIX: Safely read pages, skipping blank ones!
+        full_text = ""
+        for page in pdf.pages:
+            extracted = page.extract_text()
+            if extracted: # Only add it if there is actual text
+                full_text += extracted + "\n"
         
         text_lower = full_text.lower()
         
         # 🧠 THE UNIVERSAL ROUTER
         is_bank_statement = any(word in text_lower for word in ["ifsc", "account no", "account number", "statement of account", "details of statement"])
-        is_payslip = any(word in text_lower for word in ["payslip", "pay slip", "gross salary", "net pay", "earnings"])
+        # Removed ambiguous words so it never confuses a bank statement for a payslip
+        is_payslip = any(word in text_lower for word in ["payslip", "pay slip", "gross salary", "net pay"])
 
         if is_bank_statement and not is_payslip:
             balance = find_last_balance(full_text, ["Closing Balance", "Total Balance", "Available Balance", "Net Balance", "Ledger Balance", "Balance()", "Balance"])
@@ -88,4 +92,3 @@ async def process_document(file: UploadFile = File(...)):
             
     except Exception as e:
         return {"error": str(e)}
-
