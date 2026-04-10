@@ -88,3 +88,4 @@ async def process_document(file: UploadFile = File(...)):
             
     except Exception as e:
         return {"error": str(e)}
+
