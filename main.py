@@ -1,97 +1,66 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Body
 from fastapi.middleware.cors import CORSMiddleware
-import fitz  # 🔥 This is PyMuPDF: 10x faster and uses almost zero RAM!
+import fitz  # PyMuPDF
 import io
 import re
+import json
+from datetime import datetime
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-def extract_amount(text, keywords):
-    for keyword in keywords:
-        pattern = rf"{keyword}.*?(\d+(?:,\d+)*(?:\.\d+)?)"
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            return float(match.group(1).replace(',', ''))
-    return 0
+# 🧠 DATA EXTRACTION UTILITY
+def extract_text_from_pdf(contents):
+    doc = fitz.open(stream=contents, filetype="pdf")
+    text = ""
+    for page in doc:
+        text += page.get_text()
+    doc.close()
+    return text
 
-def find_last_balance(text, keywords):
-    # Cut off the "Summary" section
-    clean_text = re.split(r"(?i)(statement summary|total withdrawals|total debits|total deposits|total credits)", text)[0]
-    
-    cr_dr_pattern = r"(\d+(?:,\d+)*(?:\.\d+)?)\s*(?:\(Cr\)|\(Dr\)|Cr|Dr)"
-    cr_dr_matches = re.findall(cr_dr_pattern, clean_text, re.IGNORECASE)
-    
-    if cr_dr_matches:
-        return float(cr_dr_matches[-1].replace(',', ''))
-        
-    for keyword in keywords:
-        pattern = rf"{keyword}.*?(\d+(?:,\d+)*(?:\.\d+)?)"
-        matches = re.findall(pattern, clean_text, re.IGNORECASE)
-        if matches:
-            return float(matches[-1].replace(',', ''))
-    return 0
-
-def calculate_tax_new_regime(taxable_income):
-    if taxable_income <= 400000: return 0
-    elif taxable_income <= 800000: return (taxable_income - 400000) * 0.05
-    elif taxable_income <= 1200000: return 20000 + (taxable_income - 800000) * 0.10
-    elif taxable_income <= 1600000: return 60000 + (taxable_income - 1200000) * 0.15
-    elif taxable_income <= 2000000: return 120000 + (taxable_income - 1600000) * 0.20
-    else: return 200000 + (taxable_income - 2000000) * 0.30
-
-@app.post("/upload")
-async def process_document(file: UploadFile = File(...)):
-    try:
-        contents = await file.read()
-        
-        # 🔥 THE RAM FIX: Open with PyMuPDF (fitz)
-        doc = fitz.open(stream=contents, filetype="pdf")
-        
-        full_text = ""
-        for page in doc:
-            extracted = page.get_text()
-            if extracted:
-                full_text += extracted + "\n"
-        doc.close() # Instantly frees up memory!
-        
-        text_lower = full_text.lower()
-        
-        is_bank_statement = any(word in text_lower for word in ["ifsc", "account no", "account number", "statement of account", "details of statement"])
-        is_payslip = any(word in text_lower for word in ["payslip", "pay slip", "gross salary", "net pay"])
-
-        if is_bank_statement and not is_payslip:
-            balance = find_last_balance(full_text, ["Closing Balance", "Total Balance", "Available Balance", "Net Balance", "Ledger Balance", "Balance()", "Balance"])
-            return {
-                "status": "Success",
-                "doc_type": "bank_statement",
-                "balance": balance,
-                "filename": file.filename
+# 📂 ITR-U JSON GENERATOR (AY 2025-26)
+@app.post("/generate-itr-json")
+async def generate_itr_json(data: dict = Body(...)):
+    # Standard ITR-U markers for Updated Return u/s 139(8A)
+    itr_json = {
+        "ITR": {
+            "ITR1": {
+                "CreationInfo": {"SWVersionNo": "1.0", "SWCreatedDate": datetime.now().strftime("%Y-%m-%d")},
+                "PersonalInfo": {
+                    "PAN": data.get("pan"),
+                    "FirstName": data.get("first_name"),
+                    "LastName": data.get("last_name")
+                },
+                "FilingStatus": {
+                    "ReturnFileSec": "21", # 139(8A)
+                    "ReturnType": "U",
+                    "ReasonForUpdating": "01"
+                },
+                "ScheduleS": {
+                    "GrossSalary": data.get("gross_salary", 0),
+                    "DeductionUnderSection16": 75000, # AY 25-26 New Regime
+                    "NetSalary": max(0, data.get("gross_salary", 0) - 75000)
+                },
+                "ScheduleIT": {
+                    "TaxPayment": {
+                        "BSRCode": data.get("bsr"),
+                        "DateOfDeposit": data.get("date"),
+                        "ChallanSerialNo": data.get("serial"),
+                        "Tax": data.get("challan_amount")
+                    }
+                },
+                "SummaryTax": {
+                    "Fee234F": data.get("late_fee", 0),
+                    "TotalTaxPayable": 0,
+                    "AmountPayable": 0
+                }
             }
-            
-        else:
-            gross = extract_amount(full_text, ["Gross Earnings", "Gross Salary", "Gross Total Income", "Total Earnings"])
-            standard_deduction = 75000
-            taxable_income = max(0, gross - standard_deduction)
-            tax_due = calculate_tax_new_regime(taxable_income)
-            savings = 12500 if gross > 700000 else 0 
-
-            return {
-                "status": "Success",
-                "doc_type": "payslip",
-                "gross": gross,
-                "taxable": taxable_income,
-                "tax_due": tax_due,
-                "savings": savings,
-                "filename": file.filename
-            }
-            
-    except Exception as e:
-        return {"error": str(e)}
+        }
+    }
+    return itr_json
