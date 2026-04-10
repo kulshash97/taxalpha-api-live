@@ -23,7 +23,6 @@ def extract_amount(text, keywords):
     return 0
 
 def calculate_tax_new_regime(taxable_income):
-    # FY 2025-26 New Slab Rates
     if taxable_income <= 400000: return 0
     elif taxable_income <= 800000: return (taxable_income - 400000) * 0.05
     elif taxable_income <= 1200000: return 20000 + (taxable_income - 800000) * 0.10
@@ -32,32 +31,42 @@ def calculate_tax_new_regime(taxable_income):
     else: return 200000 + (taxable_income - 2000000) * 0.30
 
 @app.post("/upload")
-async def process_audit(file: UploadFile = File(...)):
+async def process_document(file: UploadFile = File(...)):
     try:
         contents = await file.read()
         pdf = pdfplumber.open(io.BytesIO(contents))
         full_text = "".join([page.extract_text() for page in pdf.pages])
         
-        # 1. Extraction
-        gross = extract_amount(full_text, ["Gross Earnings", "Gross Salary", "Gross Total Income"])
+        # 🧠 THE BRAIN ROUTER: What kind of document is this?
+        text_lower = full_text.lower()
         
-        # 2. CA Logic (Monopoly Advantage)
-        standard_deduction = 75000
-        taxable_income = max(0, gross - standard_deduction)
-        tax_due = calculate_tax_new_regime(taxable_income)
-        
-        # 3. Tax Alpha (Value Proposition)
-        # Assuming typical old regime was higher, we calculate "Savings"
-        savings = 12500 if gross > 700000 else 0 
+        # SCENARIO 1: It's a Bank Statement
+        if "statement of account" in text_lower or "closing balance" in text_lower or "ledger balance" in text_lower:
+            balance = extract_amount(full_text, ["Closing Balance", "Ledger Balance", "Available Balance", "Total Balance"])
+            return {
+                "status": "Success",
+                "doc_type": "bank_statement",
+                "balance": balance,
+                "filename": file.filename
+            }
+            
+        # SCENARIO 2: It's a Payslip
+        else:
+            gross = extract_amount(full_text, ["Gross Earnings", "Gross Salary", "Gross Total Income"])
+            standard_deduction = 75000
+            taxable_income = max(0, gross - standard_deduction)
+            tax_due = calculate_tax_new_regime(taxable_income)
+            savings = 12500 if gross > 700000 else 0 
 
-        return {
-            "status": "Success",
-            "gross": gross,
-            "taxable": taxable_income,
-            "tax_due": tax_due,
-            "savings": savings,
-            "audit_score": 98,
-            "filename": file.filename
-        }
+            return {
+                "status": "Success",
+                "doc_type": "payslip",
+                "gross": gross,
+                "taxable": taxable_income,
+                "tax_due": tax_due,
+                "savings": savings,
+                "filename": file.filename
+            }
+            
     except Exception as e:
         return {"error": str(e)}
