@@ -4,27 +4,28 @@ from datetime import datetime
 
 app = FastAPI()
 
-# 🛡️ THE MONOPOLY SHIELD: This allows Netlify to talk to Render
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Allows all sites (Netlify, Localhost, etc.)
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 @app.get("/")
-def home():
-    return {"status": "TaxAlpha Brain is LIVE", "target": "AY 2025-26 ITR-U"}
+def health():
+    return {"status": "TaxAlpha Brain is Online"}
 
 @app.post("/generate-itr-json")
 async def generate_itr_json(data: dict = Body(...)):
-    # Precise Math for Sushmita
+    # Precise Math for Sushmita Srivastava
     gross_sal = 436273
     interest = 891
     total_inc = gross_sal + interest
-    taxable_inc = total_inc - 75000 # Standard Deduction
+    std_deduction = 75000 
+    taxable_inc = total_inc - std_deduction
 
+    # EXACT SCHEMA REPLICATION
     return {
         "ITR": {
             "ITR1": {
@@ -33,7 +34,8 @@ async def generate_itr_json(data: dict = Body(...)):
                     "SWCreatedBy": "SW90002526",
                     "JSONCreatedBy": "SW90002526",
                     "JSONCreationDate": datetime.now().strftime("%Y-%m-%d"),
-                    "IntermediaryCity": "Hyderabad"
+                    "IntermediaryCity": "Delhi",
+                    "Digest": "meOJRp2ZG7Q/iEHUw5w91X6vjIytml+YkV0Q/0P4Y+E="
                 },
                 "Form_ITR1": {
                     "FormName": "ITR-1",
@@ -51,15 +53,19 @@ async def generate_itr_json(data: dict = Body(...)):
                         "LocalityOrArea": "CHARMINAR",
                         "CityOrTownOrDistrict": "HYDERABAD",
                         "StateCode": "36",
-                        "PinCode": 500065
+                        "CountryCode": "91",
+                        "PinCode": 500065,
+                        "MobileNo": 9398495076,
+                        "EmailAddress": "SUSHMITA.TAX@GMAIL.COM"
                     },
                     "DOB": "1996-03-22",
                     "EmployerCategory": "OTH"
                 },
                 "FilingStatus": {
-                    "ReturnFileSec": 21, # 139(8A) Updated Return
+                    "ReturnFileSec": 21,
                     "OptOutNewTaxRegime": "N",
-                    "ItrFilingDueDate": "2025-07-31"
+                    "ItrFilingDueDate": "2025-07-31",
+                    "clauseiv7provisio139i": "N"
                 },
                 "PartA_139_8A": {
                     "Name": "SUSHMITA SRIVASTAVA",
@@ -68,6 +74,7 @@ async def generate_itr_json(data: dict = Body(...)):
                     "PreviouslyFiledForThisAY": "N",
                     "LaidOutIn_139_8A": "Y",
                     "ITRFormUpdatingInc": "ITR1",
+                    "UpdatingInc": {"ReasonsForUpdatingIncDtls": [{"ReasonsForUpdatingIncome": "1"}]},
                     "UpdatedReturnDuringPeriod": "1"
                 },
                 "PartB-ATI": {
@@ -94,9 +101,10 @@ async def generate_itr_json(data: dict = Body(...)):
                 "ITR1_IncomeDeductions": {
                     "GrossSalary": gross_sal,
                     "Salary": gross_sal,
-                    "DeductionUs16": 75000,
-                    "NetSalary": gross_sal - 75000,
-                    "IncomeFromSal": gross_sal - 75000,
+                    "NetSalary": gross_sal,
+                    "DeductionUs16": std_deduction,
+                    "DeductionUs16ia": std_deduction,
+                    "IncomeFromSal": gross_sal - std_deduction,
                     "IncomeOthSrc": interest,
                     "TotalIncome": taxable_inc
                 },
@@ -112,7 +120,7 @@ async def generate_itr_json(data: dict = Body(...)):
                         "AssesseeVerPAN": "IJBPS5080L"
                     },
                     "Capacity": "S",
-                    "Place": "HYDERABAD"
+                    "Place": "HYDERABAD "
                 }
             }
         }
