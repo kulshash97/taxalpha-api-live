@@ -16,24 +16,24 @@ app.add_middleware(
 
 def extract_amount(text, keywords):
     for keyword in keywords:
-        pattern = rf"{keyword}.*?(\d{{1,3}}(?:,\d{{3}})*(?:\.\d+)?)"
+        # Updated to catch numbers with OR without commas (e.g. 64,082 or 64082)
+        pattern = rf"{keyword}.*?(\d+(?:,\d+)*(?:\.\d+)?)"
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             return float(match.group(1).replace(',', ''))
     return 0
 
 def find_last_balance(text, keywords):
-    # 🧠 THE CA HACK: Look for the last number that has (Cr) or (Dr) next to it!
-    # This completely ignores broken tables and just finds the final money amount.
-    cr_dr_pattern = r"(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*(?:\(Cr\)|\(Dr\)|Cr|Dr)"
+    # 🧠 THE CA HACK: Look for the last number with (Cr)/(Dr), commas or no commas!
+    cr_dr_pattern = r"(\d+(?:,\d+)*(?:\.\d+)?)\s*(?:\(Cr\)|\(Dr\)|Cr|Dr)"
     cr_dr_matches = re.findall(cr_dr_pattern, text, re.IGNORECASE)
     
     if cr_dr_matches:
         return float(cr_dr_matches[-1].replace(',', ''))
         
-    # Fallback just in case
+    # Fallback
     for keyword in keywords:
-        pattern = rf"{keyword}.*?(\d{{1,3}}(?:,\d{{3}})*(?:\.\d+)?)"
+        pattern = rf"{keyword}.*?(\d+(?:,\d+)*(?:\.\d+)?)"
         matches = re.findall(pattern, text, re.IGNORECASE)
         if matches:
             return float(matches[-1].replace(',', ''))
